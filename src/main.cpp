@@ -1,11 +1,12 @@
 #include <Arduino.h>
 #include <M5Unified.h>
 
+// with ATOMS3
 // SCL: G8
 // SDA: G7
 // SOL: G5
 // SW : G6
-// LED: G39
+// NeoPix: G39
 
 #define PIN_SCL 8
 #define PIN_SDA 7
