@@ -3,6 +3,7 @@
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 #include "MFRC522_I2C.h"
+#include "SD.h"
 
 MFRC522 mfrc522(0x28);
 
@@ -28,6 +29,7 @@ const char* WIFI_PASSWORD = "hogeupip5";
 const char* WIFI_ID = ""; // ID for IEEE802.X, null for non-IEEE802.X
 
 StaticJsonDocument<200> json_doc;
+File configFile;
 
 void setUnlock(bool f=true)
 {
@@ -113,6 +115,13 @@ void setup() {
     M5.Display.print(".");
   }
   M5.Lcd.printf("ready\n");
+
+/*
+	SPI.begin(5, 6, 7); // SCK, MISO, MOSI
+  bool fSD = SD.begin(8, SPI, 25000000); // SS pin, SPI bus, frequency
+  if (fSD == false) M5.Display.printf("error\n");
+	configFile = SD.open("/wifi.txt", "r");
+*/
 }
 
 void loop() {
