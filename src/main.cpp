@@ -15,25 +15,25 @@ MFRC522 mfrc522(0x28);
 // SW : G6
 // NeoPix: G39
 
-#define PIN_SCL 8
-#define PIN_SDA 7
+#define PIN_SCL 8 // Grove on board
+#define PIN_SDA 7 // Grove on board 
 #define PIN_SOL 5
 #define PIN_SW  6
-#define PIN_LED 39
+#define PIN_LED 35 // ATOMS3's built-in LED
+//#define PIN_LED 39 // LED on board
 
 // GAS URL (to be stored in SD):
 const char* GAS_URL = "https://script.google.com/macros/s/AKfycbwh1XZGEyKaU5-AY-gR72gtN6R-61t-ldEwJBB1Eoed3_pafeoFOxRQwDIWoaY3r-IT/exec";
 
 // WiFi Settings (to be stored in SD):
-const char* WIFI_SSID = "ifdl";
-const char* WIFI_PASSWORD = "hogeupip5";
+const char* WIFI_SSID = "WIFI_SSID";
+const char* WIFI_PASSWORD = "WIFI_PASSWORD";
 const char* WIFI_ID = ""; // ID for IEEE802.X, null for non-IEEE802.X
 
 StaticJsonDocument<1024> json_doc;
 String IDlist = "";
 File configFile;
 #define NUM_LEDS 1
-#define LED_DATA_PIN 35
 static CRGB leds[NUM_LEDS];
 
 void showLED(uint8_t r, uint8_t g, uint8_t b) {
@@ -46,14 +46,25 @@ void setUnlock(bool f=true)
 	if (f == 1){
 		printf("Unlock\n");
 		digitalWrite(PIN_SOL, HIGH);
+		showLED(30, 0, 0);
 		delay(1000);
 		digitalWrite(PIN_SOL, LOW);
-	} else {
+		showLED(0, 0, 0);
+	}
+	else {
 		digitalWrite(PIN_SOL, LOW);
 		printf("Lock\n");
 	}
-
 }
+
+bool getLockStatus(){
+	if (digitalRead(PIN_SW) == LOW) {
+		return true; // locked
+	} else {
+		return false; // unlocked
+	}	
+}
+
 
 bool connectWiFi(){
 	uint16_t nTrial = 0;
@@ -207,9 +218,10 @@ String getCardID(){
 
 void setup() {
 	M5.begin();
-	M5.Ex_I2C.begin();
+	//M5.Ex_I2C.begin(); // ATOMS3's Grove port
+  Wire.begin(PIN_SDA, PIN_SCL); // Grove on board
 
-	FastLED.addLeds<WS2812B, LED_DATA_PIN, GRB>(leds, NUM_LEDS);
+	FastLED.addLeds<WS2812B, PIN_LED, GRB>(leds, NUM_LEDS);
 	FastLED.setBrightness(128);
 	FastLED.clear();
 	showLED(0, 0, 0);
@@ -235,12 +247,17 @@ void setup() {
 void loop() {
 	M5.update();
 	if (M5.BtnA.wasClicked()){
+/*
 		readIDlist();
 		printf("%d\n", checkIDstatus("d98e4e51c"));
 		printf("%d\n", checkIDstatus("884986d79"));
 		printf("%d\n", checkIDstatus("hogehoge"));
 		//recordLog("test_id");
-	}
+		}
 	printf("%s\n", getCardID().c_str());
 	delay(100);
+*/
+		setUnlock(1);
+	}
+	if (getLockStatus() == 1) showLED(0, 0, 30); else showLED(0, 30, 0);
 }
