@@ -237,6 +237,7 @@ void setup() {
 	printf("ready\n");
 
 /*
+	// for SD card
 	SPI.begin(5, 6, 7); // SCK, MISO, MOSI
   bool fSD = SD.begin(8, SPI, 25000000); // SS pin, SPI bus, frequency
   if (fSD == false) M5.Display.printf("error\n");
@@ -247,17 +248,26 @@ void setup() {
 void loop() {
 	M5.update();
 	if (M5.BtnA.wasClicked()){
-/*
+		connectWiFi();
 		readIDlist();
-		printf("%d\n", checkIDstatus("d98e4e51c"));
-		printf("%d\n", checkIDstatus("884986d79"));
-		printf("%d\n", checkIDstatus("hogehoge"));
-		//recordLog("test_id");
-		}
-	printf("%s\n", getCardID().c_str());
-	delay(100);
-*/
-		setUnlock(1);
 	}
+	delay(100);
+
 	if (getLockStatus() == 1) showLED(0, 0, 30); else showLED(0, 30, 0);
+
+	String cardID = getCardID();
+	if (cardID.length() > 0) {
+		printf("Card ID: %s\n", cardID.c_str());
+		if (checkIDstatus(cardID) == 1) {
+			printf("Card %s is enabled\n", cardID.c_str());
+			recordLog(cardID);
+			setUnlock(1);
+		} else if (checkIDstatus(cardID) == 0) {
+			printf("Card %s is disabled\n", cardID.c_str());
+			setUnlock(0);
+		} else {
+			printf("Card %s not found in ID list\n", cardID.c_str());
+			setUnlock(0);
+		}
+	}
 }
