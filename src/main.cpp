@@ -6,6 +6,8 @@
 #include <FastLED.h>
 #include "SD.h"
 
+//#define UNLOCK_TEST
+
 MFRC522 mfrc522(0x28);
 
 // with ATOMS3
@@ -23,7 +25,7 @@ MFRC522 mfrc522(0x28);
 //#define PIN_LED 39 // LED on board
 
 // GAS URL (to be stored in SD):
-const char* GAS_URL = "https://script.google.com/macros/s/AKfycbwh1XZGEyKaU5-AY-gR72gtN6R-61t-ldEwJBB1Eoed3_pafeoFOxRQwDIWoaY3r-IT/exec";
+const char* GAS_URL = "https://script.google.com/macros/s/AK.../exec";
 
 // WiFi Settings (to be stored in SD):
 const char* WIFI_SSID = "WIFI_SSID";
@@ -65,6 +67,19 @@ bool getLockStatus(){
 	}	
 }
 
+// LED
+// 起動時赤点灯: RFID Unit初期化失敗
+// ふだん：
+//   緑: ロック状態
+//   青: アンロック状態
+// ボタン押したとき：
+//   青点滅(ゆっくり): WiFi接続中
+//   赤点滅(高速10回): WiFi接続失敗
+//   紫点灯: IDリスト取得中
+// IDカードタッチ時：
+//   赤: 未登録カード
+//   紫: 登録済みカード(disbaled)
+//   橙: 登録済みカード(enabled)→白(記録中)→その後消灯（記録エラー=赤点滅(高速10回)）
 
 bool connectWiFi(){
 	uint16_t nTrial = 0;
@@ -96,7 +111,6 @@ bool readIDlist(){
 	// GET -> parse ID
 
   WiFiClientSecure client;
-	showLED(0, 30, 30);
   client.setInsecure();
   if(!client.connect("script.google.com", 443)) {
     printf("failed to connect GAS server\n");
@@ -116,7 +130,6 @@ bool readIDlist(){
 		msg0 += line + "\n";
   }
   client.stop();
-	showLED(0, 0, 0);
 
 	// ToDo: chunk decode for response body
 
@@ -154,7 +167,6 @@ bool readIDlist(){
 bool recordLog(String id){
 	// POST JSON: {"action": "log", "id": "<ID>", [option:"time": "<timestamp>"]}
   WiFiClientSecure client;
-	showLED(0, 30, 0);
   client.setInsecure();
   if(!client.connect("script.google.com", 443)) {
     printf("connect error!\n");
@@ -165,7 +177,7 @@ bool recordLog(String id){
   json_doc["id"] = id;
 
   serializeJson(json_doc, json_request);
-  printf("JSON string: %s\n", json_request.c_str()); // for debug
+//  printf("JSON string: %s\n", json_request.c_str()); // for debug
 
   String request = String("")
               + "POST " + GAS_URL + " HTTP/1.1\r\n"
@@ -174,15 +186,14 @@ bool recordLog(String id){
               + "Content-Length: " + String(json_request.length()) + "\r\n"
               + "Connection: close\r\n\r\n"
               + String(json_request) + "\r\n";
-  printf("request: %s\n", request.c_str());
+//  printf("request: %s\n", request.c_str());
   client.print(request);
 
   while (client.connected()) {
     String line = client.readStringUntil('\n');
-    printf("Response: %s\n", line.c_str());
+//    printf("Response: %s\n", line.c_str());
   }
   client.stop();
-	showLED(0, 0, 0);
 
   return true;
 }
@@ -228,7 +239,7 @@ void setup() {
 
 	pinMode(PIN_SOL, OUTPUT); digitalWrite(PIN_SOL, LOW);
 	pinMode(PIN_SW, INPUT_PULLUP);
-	connectWiFi();
+//	connectWiFi(); // connect WiFi at startup
 
 	showLED(30, 0, 0);
 	mfrc522.PCD_Init(); // Init MFRC522
@@ -248,26 +259,53 @@ void setup() {
 void loop() {
 	M5.update();
 	if (M5.BtnA.wasClicked()){
+#ifdef UNLOCK_TEST
+		setUnlock(1);
+#else
 		connectWiFi();
+		printf("Reading ID list...\n");
+		showLED(50, 0, 50);
 		readIDlist();
+		printf("ID list: %s\n", IDlist.c_str());
+		showLED(0, 0, 0);
+#endif
 	}
-	delay(100);
-
 	if (getLockStatus() == 1) showLED(0, 0, 30); else showLED(0, 30, 0);
 
 	String cardID = getCardID();
 	if (cardID.length() > 0) {
 		printf("Card ID: %s\n", cardID.c_str());
+#ifdef UNLOCK_TEST
+//   赤: 未登録カード
+//   紫: 登録済みカード(disbaled)
+//   黄: 登録済みカード(enabled)→解錠動作後消灯
+#else
 		if (checkIDstatus(cardID) == 1) {
 			printf("Card %s is enabled\n", cardID.c_str());
-			recordLog(cardID);
+			showLED(50, 30, 0);
 			setUnlock(1);
+			showLED(60, 60, 60);
+			bool res = recordLog(cardID);
+			if (res == false){
+				printf("Failed to record log for card %s\n", cardID.c_str());
+				for (uint8_t i = 0; i < 10; i++){
+					showLED(30, 0, 0); delay(100);
+					showLED(0, 0, 0);	delay(100);
+				}
+			}
+			showLED(0, 0, 0);
 		} else if (checkIDstatus(cardID) == 0) {
 			printf("Card %s is disabled\n", cardID.c_str());
+			showLED(30, 0, 60);
+			delay(1000);
 			setUnlock(0);
 		} else {
+			showLED(30, 0, 0);
 			printf("Card %s not found in ID list\n", cardID.c_str());
 			setUnlock(0);
+			delay(1000);
 		}
+#endif
 	}
+	delay(100);
 }
