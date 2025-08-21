@@ -10,6 +10,8 @@
 
 MFRC522 mfrc522(0x28);
 
+#define LED_INTENSITY 70
+
 // with ATOMS3
 // SCL: G8
 // SDA: G7
@@ -87,7 +89,7 @@ bool connectWiFi(){
 	printf("WiFi connecting to %s...\n", WIFI_SSID);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   while (WiFi.status() != WL_CONNECTED && nTrial < 30	) {
-		if (f == 0) showLED(0, 0, 30); else showLED(0, 0, 0);
+		if (f == 0) showLED(0, 0, LED_INTENSITY); else showLED(0, 0, 0);
 		f = 1 - f;
 		printf(".");
     delay(500);
@@ -95,7 +97,7 @@ bool connectWiFi(){
 	if (WiFi.status() != WL_CONNECTED) {
 		printf("WiFi connection failed\n");
 		for (uint8_t i = 0; i < 10; i++) {
-			showLED(30, 0, 0); delay(100);
+			showLED(LED_INTENSITY, 0, 0); delay(100);
 			showLED(0, 0, 0);	delay(100);
 		}
 		return false;
@@ -241,7 +243,7 @@ void setup() {
 	pinMode(PIN_SW, INPUT_PULLUP);
 //	connectWiFi(); // connect WiFi at startup
 
-	showLED(30, 0, 0);
+	showLED(LED_INTENSITY, 0, 0);
 	mfrc522.PCD_Init(); // Init MFRC522
 	showLED(0, 0, 0);
  
@@ -264,7 +266,7 @@ void loop() {
 #else
 		connectWiFi();
 		printf("Reading ID list...\n");
-		showLED(50, 0, 50);
+		showLED(LED_INTENSITY, 0, LED_INTENSITY);
 		readIDlist();
 		printf("ID list: %s\n", IDlist.c_str());
 		showLED(0, 0, 0);
@@ -282,25 +284,25 @@ void loop() {
 #else
 		if (checkIDstatus(cardID) == 1) {
 			printf("Card %s is enabled\n", cardID.c_str());
-			showLED(50, 30, 0);
+			showLED(LED_INTENSITY+20, LED_INTENSITY, 0);
 			setUnlock(1);
-			showLED(60, 60, 60);
+			showLED(LED_INTENSITY, LED_INTENSITY, LED_INTENSITY);
 			bool res = recordLog(cardID);
 			if (res == false){
 				printf("Failed to record log for card %s\n", cardID.c_str());
 				for (uint8_t i = 0; i < 10; i++){
-					showLED(30, 0, 0); delay(100);
+					showLED(LED_INTENSITY, 0, 0); delay(100);
 					showLED(0, 0, 0);	delay(100);
 				}
 			}
 			showLED(0, 0, 0);
 		} else if (checkIDstatus(cardID) == 0) {
 			printf("Card %s is disabled\n", cardID.c_str());
-			showLED(30, 0, 60);
+			showLED(LED_INTENSITY, 0, LED_INTENSITY+30);
 			delay(1000);
 			setUnlock(0);
 		} else {
-			showLED(30, 0, 0);
+			showLED(LED_INTENSITY, 0, 0);
 			printf("Card %s not found in ID list\n", cardID.c_str());
 			setUnlock(0);
 			delay(1000);
