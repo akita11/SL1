@@ -1,3 +1,5 @@
+// for SL2
+
 #include <Arduino.h>
 #include <M5Unified.h>
 #include <WiFiClientSecure.h>
@@ -12,19 +14,11 @@ MFRC522 mfrc522(0x28);
 
 #define LED_INTENSITY 70
 
-// with ATOMS3
-// SCL: G8
-// SDA: G7
-// SOL: G5
-// SW : G6
-// NeoPix: G39
-
-#define PIN_SCL 8 // Grove on board
-#define PIN_SDA 7 // Grove on board 
+#define PIN_SCL 15 // Grove on board
+#define PIN_SDA 13 // Grove on board 
 #define PIN_SOL 5
 #define PIN_SW  6
-#define PIN_LED 35 // ATOMS3's built-in LED
-//#define PIN_LED 39 // LED on board
+#define PIN_LED 43 // LED on board
 
 // GAS URL (to be stored in SD):
 const char* GAS_URL = "https://script.google.com/macros/s/AK.../exec";
@@ -249,13 +243,13 @@ void setup() {
  
 	printf("ready\n");
 
-/*
 	// for SD card
-	SPI.begin(5, 6, 7); // SCK, MISO, MOSI
-  bool fSD = SD.begin(8, SPI, 25000000); // SS pin, SPI bus, frequency
+	SPI.begin(5, 7, 9); // SCK, MISO, MOSI
+  bool fSD = SD.begin(44, SPI, 25000000); // SS pin, SPI bus, frequency
   if (fSD == false) M5.Display.printf("error\n");
 	configFile = SD.open("/wifi.txt", "r");
-*/
+	// ToDo: read wifi settings from SD
+
 }
 
 void loop() {
