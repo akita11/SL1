@@ -1,11 +1,10 @@
 // for SL2
-
 #include <Arduino.h>
 #include <M5Unified.h>
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 #include "MFRC522_I2C.h"
-#include <FastLED.h>
+#include <Adafruit_NeoPixel.h>
 #include "SD.h"
 
 //#define UNLOCK_TEST
@@ -14,29 +13,27 @@ MFRC522 mfrc522(0x28);
 
 #define LED_INTENSITY 70
 
-#define PIN_SCL 15 // Grove on board
-#define PIN_SDA 13 // Grove on board 
-#define PIN_SOL 5
-#define PIN_SW  6
-#define PIN_LED 43 // LED on board
+#define PIN_SCL 15 // Grove on board, SL2
+#define PIN_SDA 13 // Grove on board, SL2
+#define PIN_SOL 1 // SL2
+#define PIN_SW  3 // SL2
+#define PIN_LED 43 // LED on board, SL2
+//#define PIN_LED 21 // LED on StampS3
 
-// GAS URL (to be stored in SD):
-const char* GAS_URL = "https://script.google.com/macros/s/AK.../exec";
-
-// WiFi Settings (to be stored in SD):
-const char* WIFI_SSID = "WIFI_SSID";
-const char* WIFI_PASSWORD = "WIFI_PASSWORD";
-const char* WIFI_ID = ""; // ID for IEEE802.X, null for non-IEEE802.X
+char GAS_URL[128];
+char WIFI_SSID[32];
+char WIFI_PASSWORD[64];
+char WIFI_ID[64];
 
 StaticJsonDocument<1024> json_doc;
 String IDlist = "";
 File configFile;
 #define NUM_LEDS 1
-static CRGB leds[NUM_LEDS];
+Adafruit_NeoPixel pixels = Adafruit_NeoPixel(NUM_LEDS, PIN_LED, NEO_GRB + NEO_KHZ800);
 
 void showLED(uint8_t r, uint8_t g, uint8_t b) {
-	leds[0] = CRGB(r, g, b);
-	FastLED.show();
+	pixels.setPixelColor(0, r, g, b);
+	pixels.show();
 }
 
 void setUnlock(bool f=true)
@@ -81,13 +78,13 @@ bool connectWiFi(){
 	uint16_t nTrial = 0;
 	uint8_t f = 0;
 	printf("WiFi connecting to %s...\n", WIFI_SSID);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  while (WiFi.status() != WL_CONNECTED && nTrial < 30	) {
+	WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+	while (WiFi.status() != WL_CONNECTED && nTrial < 30	) {
 		if (f == 0) showLED(0, 0, LED_INTENSITY); else showLED(0, 0, 0);
 		f = 1 - f;
 		printf(".");
-    delay(500);
-  }
+		delay(500);
+	}
 	if (WiFi.status() != WL_CONNECTED) {
 		printf("WiFi connection failed\n");
 		for (uint8_t i = 0; i < 10; i++) {
@@ -106,26 +103,26 @@ bool readIDlist(){
 	// get ID list from GAS
 	// GET -> parse ID
 
-  WiFiClientSecure client;
-  client.setInsecure();
-  if(!client.connect("script.google.com", 443)) {
-    printf("failed to connect GAS server\n");
-    return false;
-  }
-  String request = String("")
-              + "GET " + GAS_URL + " HTTP/1.1\r\n"
-              + "Host: script.google.com\r\n"
-              + "Content-type: plain/text\r\n"
-              + "Content-Length: 0" + "\r\n"
-              + "Connection: close\r\n\r\n";
-  client.print(request);
+	WiFiClientSecure client;
+	client.setInsecure();
+	if(!client.connect("script.google.com", 443)) {
+		printf("failed to connect GAS server\n");
+		return false;
+	}
+	String request = String("")
+							+ "GET " + GAS_URL + " HTTP/1.1\r\n"
+							+ "Host: script.google.com\r\n"
+							+ "Content-type: plain/text\r\n"
+							+ "Content-Length: 0" + "\r\n"
+							+ "Connection: close\r\n\r\n";
+	client.print(request);
 
 	String msg0 = "";
-  while (client.connected()) {
-    String line = client.readStringUntil('\n');
+	while (client.connected()) {
+		String line = client.readStringUntil('\n');
 		msg0 += line + "\n";
-  }
-  client.stop();
+	}
+	client.stop();
 
 	// ToDo: chunk decode for response body
 
@@ -157,41 +154,41 @@ bool readIDlist(){
 	IDlist = msg;
 //	deserializeJson(json_doc, msg);
 //	printf("%s\n", json_doc.as<String>().c_str());
-  return true;
+	return true;
 }
 
 bool recordLog(String id){
 	// POST JSON: {"action": "log", "id": "<ID>", [option:"time": "<timestamp>"]}
-  WiFiClientSecure client;
-  client.setInsecure();
-  if(!client.connect("script.google.com", 443)) {
-    printf("connect error!\n");
-    return false;
-  }
-  String json_request;
-  json_doc["action"] = "log";
-  json_doc["id"] = id;
+	WiFiClientSecure client;
+	client.setInsecure();
+	if(!client.connect("script.google.com", 443)) {
+		printf("connect error!\n");
+		return false;
+	}
+	String json_request;
+	json_doc["action"] = "log";
+	json_doc["id"] = id;
 
-  serializeJson(json_doc, json_request);
+	serializeJson(json_doc, json_request);
 //  printf("JSON string: %s\n", json_request.c_str()); // for debug
 
-  String request = String("")
-              + "POST " + GAS_URL + " HTTP/1.1\r\n"
-              + "Host: script.google.com\r\n"
-              + "Content-type: application/json\r\n"
-              + "Content-Length: " + String(json_request.length()) + "\r\n"
-              + "Connection: close\r\n\r\n"
-              + String(json_request) + "\r\n";
+	String request = String("")
+							+ "POST " + GAS_URL + " HTTP/1.1\r\n"
+							+ "Host: script.google.com\r\n"
+							+ "Content-type: application/json\r\n"
+							+ "Content-Length: " + String(json_request.length()) + "\r\n"
+							+ "Connection: close\r\n\r\n"
+							+ String(json_request) + "\r\n";
 //  printf("request: %s\n", request.c_str());
-  client.print(request);
+	client.print(request);
 
-  while (client.connected()) {
-    String line = client.readStringUntil('\n');
+	while (client.connected()) {
+		String line = client.readStringUntil('\n');
 //    printf("Response: %s\n", line.c_str());
-  }
-  client.stop();
+	}
+	client.stop();
 
-  return true;
+	return true;
 }
 
 // returns 1=enabled, 0=disabled, -1=not found
@@ -212,12 +209,12 @@ String getCardID(){
 	if (!mfrc522.PICC_IsNewCardPresent() || !mfrc522.PICC_ReadCardSerial()) {
 		//printf("no card\n");
 	}
-  else{
+	else{
 		for (byte i = 0; i < mfrc522.uid.size; i++) {
 			id += String(mfrc522.uid.uidByte[i], HEX);
-    	//printf("%02x ", mfrc522.uid.uidByte[i]);
+			//printf("%02x ", mfrc522.uid.uidByte[i]);
 		}
-	  //printf("\n");
+		//printf("\n");
 	}
 	//printf("card ID: %s\n", id.c_str());
 	return(id);
@@ -225,31 +222,59 @@ String getCardID(){
 
 void setup() {
 	M5.begin();
-	//M5.Ex_I2C.begin(); // ATOMS3's Grove port
+	//M5.Ex_I2C.begin(); // need for ATOMS3's Grove port
   Wire.begin(PIN_SDA, PIN_SCL); // Grove on board
+	pinMode(PIN_LED, OUTPUT);
+	pixels.begin();
 
-	FastLED.addLeds<WS2812B, PIN_LED, GRB>(leds, NUM_LEDS);
-	FastLED.setBrightness(128);
-	FastLED.clear();
-	showLED(0, 0, 0);
-
+	/*
+	while(1){
+		printf("hoge\n");
+		showLED(80, 0, 0); delay(100);
+		showLED(0, 0, 0); delay(100);
+	}
+	*/
 	pinMode(PIN_SOL, OUTPUT); digitalWrite(PIN_SOL, LOW);
 	pinMode(PIN_SW, INPUT_PULLUP);
-//	connectWiFi(); // connect WiFi at startup
 
 	showLED(LED_INTENSITY, 0, 0);
 	mfrc522.PCD_Init(); // Init MFRC522
 	showLED(0, 0, 0);
- 
-	printf("ready\n");
 
-	// for SD card
+	// for SD card, SL2
 	SPI.begin(5, 7, 9); // SCK, MISO, MOSI
-  bool fSD = SD.begin(44, SPI, 25000000); // SS pin, SPI bus, frequency
-  if (fSD == false) M5.Display.printf("error\n");
-	configFile = SD.open("/wifi.txt", "r");
-	// ToDo: read wifi settings from SD
+	bool fSD = SD.begin(44, SPI, 25000000); // SS pin, SPI bus, frequency
+	if (fSD == false){
+		while(1){
+			printf("SD init error\n");
+			showLED(LED_INTENSITY, 0, 0); delay(100);
+			showLED(0, 0, 0); delay(100);
+		}
+	}
 
+	//for (uint8_t i = 0; i < 10; i++){ printf("ready\n"); delay(500); }
+
+	// read config from SD
+	strcpy(WIFI_SSID, ""); strcpy(WIFI_PASSWORD, ""); strcpy(WIFI_ID, "");
+	configFile = SD.open("/wifi.txt", "r");
+	while(configFile.available()){
+		String line = configFile.readStringUntil('\n');
+		line.trim();
+		printf("Read line: %s\n", line.c_str());
+		int s = line.indexOf(' ');
+		if (s > 0){
+			String key = line.substring(0, s);
+			String val = line.substring(s + 1);
+			if (key == "SSID") strcpy(WIFI_SSID, val.c_str());
+			else if (key == "PASSWORD") strcpy(WIFI_PASSWORD, val.c_str());
+			else if (key == "ID") strcpy(WIFI_ID, val.c_str());
+			else if (key == "GAS_URL") strcpy(GAS_URL, val.c_str());
+			printf("Read from SD: %s=%s\n", key.c_str(), val.c_str());
+		}
+	}
+	configFile.close();
+	printf("%s / %s / %s / %s\n", WIFI_SSID, WIFI_PASSWORD, WIFI_ID, GAS_URL);
+	connectWiFi(); // connect WiFi at startup
 }
 
 void loop() {
@@ -278,7 +303,7 @@ void loop() {
 #else
 		if (checkIDstatus(cardID) == 1) {
 			printf("Card %s is enabled\n", cardID.c_str());
-			showLED(LED_INTENSITY+20, LED_INTENSITY, 0);
+			showLED(LED_INTENSITY+20, LED_INTENSITY, 0); // yellow
 			setUnlock(1);
 			showLED(LED_INTENSITY, LED_INTENSITY, LED_INTENSITY);
 			bool res = recordLog(cardID);
@@ -292,12 +317,12 @@ void loop() {
 			showLED(0, 0, 0);
 		} else if (checkIDstatus(cardID) == 0) {
 			printf("Card %s is disabled\n", cardID.c_str());
-			showLED(LED_INTENSITY, 0, LED_INTENSITY+30);
+			showLED(LED_INTENSITY, 0, LED_INTENSITY+30); // purple
 			delay(1000);
 			setUnlock(0);
 		} else {
+			printf("Card %s not found in ID list\n", cardID.c_str()); // red
 			showLED(LED_INTENSITY, 0, 0);
-			printf("Card %s not found in ID list\n", cardID.c_str());
 			setUnlock(0);
 			delay(1000);
 		}
