@@ -8,9 +8,6 @@
 #include "SD.h"
 
 //#define UNLOCK_TEST
-
-MFRC522 mfrc522(0x28);
-
 #define LED_INTENSITY 70
 
 #define PIN_SCL 15 // Grove on board, SL2
@@ -19,17 +16,17 @@ MFRC522 mfrc522(0x28);
 #define PIN_SW  3 // SL2
 #define PIN_LED 43 // LED on board, SL2
 //#define PIN_LED 21 // LED on StampS3
-
 char GAS_URL[128];
 char WIFI_SSID[32];
 char WIFI_PASSWORD[64];
 char WIFI_ID[64];
+MFRC522 mfrc522(0x28);
 
 StaticJsonDocument<1024> json_doc;
 String IDlist = "";
 File configFile;
 #define NUM_LEDS 1
-Adafruit_NeoPixel pixels = Adafruit_NeoPixel(NUM_LEDS, PIN_LED, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel pixels = Adafruit_NeoPixel(NUM_LEDS, PIN_LED, NEO_RGB + NEO_KHZ800); // for PL9823-F5
 
 void showLED(uint8_t r, uint8_t g, uint8_t b) {
 	pixels.setPixelColor(0, r, g, b);
@@ -42,7 +39,7 @@ void setUnlock(bool f=true)
 		printf("Unlock\n");
 		digitalWrite(PIN_SOL, HIGH);
 		showLED(30, 0, 0);
-		delay(1000);
+		delay(300);
 		digitalWrite(PIN_SOL, LOW);
 		showLED(0, 0, 0);
 	}
@@ -291,7 +288,8 @@ void loop() {
 		showLED(0, 0, 0);
 #endif
 	}
-	if (getLockStatus() == 1) showLED(0, 0, 30); else showLED(0, 30, 0);
+	if (getLockStatus() == 0) showLED(0, 0, LED_INTENSITY); // blue when unlocked
+	else showLED(0, LED_INTENSITY, 0); // green when locked
 
 	String cardID = getCardID();
 	if (cardID.length() > 0) {
@@ -305,7 +303,7 @@ void loop() {
 			printf("Card %s is enabled\n", cardID.c_str());
 			showLED(LED_INTENSITY+20, LED_INTENSITY, 0); // yellow
 			setUnlock(1);
-			showLED(LED_INTENSITY, LED_INTENSITY, LED_INTENSITY);
+			showLED(LED_INTENSITY, LED_INTENSITY, LED_INTENSITY); // white
 			bool res = recordLog(cardID);
 			if (res == false){
 				printf("Failed to record log for card %s\n", cardID.c_str());
