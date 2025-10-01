@@ -8,6 +8,8 @@
 #include "SD.h"
 
 //#define UNLOCK_TEST
+#define WITHOUT_WIFI // without WiFi, read ID from SD(id.txt), and record log to SD(log.txt)
+
 #define LED_INTENSITY 70
 
 #define PIN_SCL 15 // Grove on board, SL2
@@ -24,7 +26,7 @@ MFRC522 mfrc522(0x28);
 
 StaticJsonDocument<1024> json_doc;
 String IDlist = "";
-File configFile;
+File file;
 #define NUM_LEDS 1
 Adafruit_NeoPixel pixels = Adafruit_NeoPixel(NUM_LEDS, PIN_LED, NEO_RGB + NEO_KHZ800); // for PL9823-F5
 
@@ -96,10 +98,47 @@ bool connectWiFi(){
 	}
 }
 
+void ShowError(uint16_t n)
+{
+	for (uint16_t i = 0; i < n; i++) {
+		showLED(LED_INTENSITY, 0, 0); delay(100);
+		showLED(0, 0, 0);	delay(100);
+	}
+}
+
+
 bool readIDlist(){
+
+	// IDlist:
+	// [{"id":"CardID","active":"enable=1"},{"id":"d98e4e51c","active":0},{"id":"d995d243","active":1},{"id":"884986d79","active":1},{"id":"884f19ce1","active":1},{"id":"881d87a8ba","active":1}]
+
+	#ifdef WITHOUT_WIFI
+	// read ID list from SD
+	IDlist = "[{\"id\":\"CardID\",\"active\":\"enable=1\"}";
+	file = SD.open("/id.csv", "r");
+	if (file) {
+		while(file.available()){
+			String line = file.readStringUntil('\n');
+			line.trim();
+			int s = line.indexOf(',');
+			if (s > 0){
+				String id = line.substring(0, s);
+				String val = line.substring(s + 1);
+				if (line.length() > 0){
+					IDlist += ",{\"id\":\""+id+"\",\"active\":"+val+"}";
+				}
+			}
+		}
+		IDlist += "]";
+		file.close();
+	} else {
+		printf("failed to open id.csv.r\n");
+		ShowError(1000);
+		return false;
+	}
+#else
 	// get ID list from GAS
 	// GET -> parse ID
-
 	WiFiClientSecure client;
 	client.setInsecure();
 	if(!client.connect("script.google.com", 443)) {
@@ -145,16 +184,31 @@ bool readIDlist(){
 		}
 	}
 	
-	// [{"id":"CardID","active":"enable=1"},{"id":"d98e4e51c","active":0},{"id":"d995d243","active":1},{"id":"884986d79","active":1},{"id":"884f19ce1","active":1},{"id":"881d87a8ba","active":1}]
-	// printf("msg: %s\n", msg.c_str());
-
 	IDlist = msg;
 //	deserializeJson(json_doc, msg);
 //	printf("%s\n", json_doc.as<String>().c_str());
+#endif
+	printf("ID list: %s\n", IDlist.c_str());
 	return true;
 }
 
 bool recordLog(String id){
+#ifdef WITHOUT_WIFI
+	// record log to SD card
+	file = SD.open("/log.csv", FILE_APPEND);
+	if (file) {
+		String logline = "";
+		logline += id;
+		logline += "\n";
+		file.print(logline);
+		file.close();
+		printf("Log recorded to SD: %s\n", logline.c_str());
+	} else {
+		printf("log.csv open error\n");
+		ShowError(1000);
+		return false;
+	}
+#else
 	// POST JSON: {"action": "log", "id": "<ID>", [option:"time": "<timestamp>"]}
 	WiFiClientSecure client;
 	client.setInsecure();
@@ -184,7 +238,7 @@ bool recordLog(String id){
 //    printf("Response: %s\n", line.c_str());
 	}
 	client.stop();
-
+#endif
 	return true;
 }
 
@@ -224,13 +278,6 @@ void setup() {
 	pinMode(PIN_LED, OUTPUT);
 	pixels.begin();
 
-	/*
-	while(1){
-		printf("hoge\n");
-		showLED(80, 0, 0); delay(100);
-		showLED(0, 0, 0); delay(100);
-	}
-	*/
 	pinMode(PIN_SOL, OUTPUT); digitalWrite(PIN_SOL, LOW);
 	pinMode(PIN_SW, INPUT_PULLUP);
 
@@ -249,13 +296,13 @@ void setup() {
 		}
 	}
 
-	//for (uint8_t i = 0; i < 10; i++){ printf("ready\n"); delay(500); }
-
-	// read config from SD
+#ifdef WITHOUT_WIFI
+#else
+	// read WiFi config from SD
 	strcpy(WIFI_SSID, ""); strcpy(WIFI_PASSWORD, ""); strcpy(WIFI_ID, "");
-	configFile = SD.open("/wifi.txt", "r");
-	while(configFile.available()){
-		String line = configFile.readStringUntil('\n');
+	file = SD.open("/wifi.txt", "r");
+	while(file.available()){
+		String line = file.readStringUntil('\n');
 		line.trim();
 		printf("Read line: %s\n", line.c_str());
 		int s = line.indexOf(' ');
@@ -269,9 +316,10 @@ void setup() {
 			printf("Read from SD: %s=%s\n", key.c_str(), val.c_str());
 		}
 	}
-	configFile.close();
+	file.close();
 	printf("%s / %s / %s / %s\n", WIFI_SSID, WIFI_PASSWORD, WIFI_ID, GAS_URL);
 	connectWiFi(); // connect WiFi at startup
+#endif
 }
 
 void loop() {
@@ -280,7 +328,10 @@ void loop() {
 #ifdef UNLOCK_TEST
 		setUnlock(1);
 #else
+	#ifdef WITHOUT_WIFI
+	#else
 		connectWiFi();
+	#endif
 		printf("Reading ID list...\n");
 		showLED(LED_INTENSITY, 0, LED_INTENSITY);
 		readIDlist();
