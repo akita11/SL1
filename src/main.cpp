@@ -18,6 +18,11 @@
 #define PIN_SW  3 // SL2
 #define PIN_LED 43 // LED on board, SL2
 //#define PIN_LED 21 // LED on StampS3
+
+#define PWM_STRONG_ON 255
+#define PWM_WEAK_ON   25
+#define PWM_OFF			  0
+
 char GAS_URL[128];
 char WIFI_SSID[32];
 char WIFI_PASSWORD[64];
@@ -35,19 +40,31 @@ void showLED(uint8_t r, uint8_t g, uint8_t b) {
 	pixels.show();
 }
 
+uint16_t tmOn = 0;
+bool fUnlock = false;
+
 void setUnlock(bool f=true)
 {
 	if (f == 1){
 		printf("Unlock\n");
+/*
 		digitalWrite(PIN_SOL, HIGH);
 		showLED(30, 0, 0);
 		delay(300);
 		digitalWrite(PIN_SOL, LOW);
 		showLED(0, 0, 0);
+*/
+		showLED(30, 0, 0);
+		analogWrite(PIN_SOL, PWM_STRONG_ON);
+		delay(300);
+		analogWrite(PIN_SOL, PWM_WEAK_ON);
+		showLED(0, 0, 0);
+		fUnlock = true;
 	}
 	else {
 		digitalWrite(PIN_SOL, LOW);
 		printf("Lock\n");
+		fUnlock = false;
 	}
 }
 
@@ -278,7 +295,7 @@ void setup() {
 	pinMode(PIN_LED, OUTPUT);
 	pixels.begin();
 
-	pinMode(PIN_SOL, OUTPUT); digitalWrite(PIN_SOL, LOW);
+	//	pinMode(PIN_SOL, OUTPUT); digitalWrite(PIN_SOL, LOW);
 	pinMode(PIN_SW, INPUT_PULLUP);
 
 	showLED(LED_INTENSITY, 0, 0);
@@ -339,9 +356,82 @@ void loop() {
 		showLED(0, 0, 0);
 #endif
 	}
+/*
 	if (getLockStatus() == 0) showLED(0, 0, LED_INTENSITY); // blue when unlocked
 	else showLED(0, LED_INTENSITY, 0); // green when locked
+*/
 
+/*
+（用語の定義）
+弱通電＝ソレノイドに弱通電し金具をはめてもロックされない状態
+強通電＝ソレノイドに強通電し金具を吐き出す状態
+非通電＝ソレノイドに通電しておらず金具をはめるとロックされる状態
+解錠＝金具が吐き出された（扉が開いている）状態
+施錠＝金具がはまっている（扉は閉じている）状態
+
+1.初期状態: 非通電、施錠
+2.解錠動作: 強通電(300ms)→弱通電
+2-1. 解錠になった場合: 非通電→4.へ
+2-2. 施錠のままの場合: 弱通電を継続→3.へ
+
+3. 解錠動作を行ったが施錠のままの場合: 弱通電を継続
+3-1. 解錠になった場合: 非通電→扉を閉じて施錠になったら1.へ戻る
+3-2. 施錠のまま60秒経過: 解錠動作をあきらめ、非通電→1.へ戻る
+
+4. 解錠された状態: 扉を閉じて施錠になったら1.へ戻る
+
+*/
+//	printf("%d %d %d : ", tmOn, fUnlock, getLockStatus());
+	if (fUnlock == true){
+		// unlock operated
+		if (getLockStatus() == 0){
+			// actually unlocked
+			printf("Actually unlocked\n");
+			showLED(0, 0, LED_INTENSITY); // blue when unlocked
+			tmOn = 0;
+		 	analogWrite(PIN_SOL, PWM_OFF); // turn off when actually unlocked
+			fUnlock = false;
+		}
+		else{
+			// still actually locked
+			printf("Still locked\n");
+			showLED(0, LED_INTENSITY, 0); // green when locked
+			tmOn++;
+#define RETAIN_UNLOCK_TIME 30 // [x100ms]
+			if (tmOn > RETAIN_UNLOCK_TIME){
+				// if still locked after RETAIN_UNLOCK_TIME, give up unlock
+				analogWrite(PIN_SOL, PWM_OFF); // turn off
+				for (uint8_t i = 0; i < 3; i++){
+					// flash green when giving up unlock
+					showLED(0, LED_INTENSITY, 0); delay(100);
+					showLED(0, 0, 0);	delay(100);
+				}
+				fUnlock = false;
+				tmOn = 0;
+			}
+		}
+	}
+	else{
+		printf("Locked\n");
+		showLED(0, LED_INTENSITY, 0); // green when locked
+	}
+/*
+	if (getLockStatus() == 0){
+		 showLED(0, 0, LED_INTENSITY); // blue when unlocked
+		 tmOn = 0;
+		 analogWrite(PIN_SOL, PWM_OFF); // turn off when actually unlocked
+	}
+	else{
+		if (fUnlock == true){
+			// unlocked, but still locked
+			tmOn++;
+		}
+		else{
+			// locked
+		}
+		showLED(0, LED_INTENSITY, 0); // green when locked
+	}
+*/
 	String cardID = getCardID();
 	if (cardID.length() > 0) {
 		printf("Card ID: %s\n", cardID.c_str());
