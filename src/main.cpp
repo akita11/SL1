@@ -336,6 +336,7 @@ void setup() {
 	file.close();
 	printf("%s / %s / %s / %s\n", WIFI_SSID, WIFI_PASSWORD, WIFI_ID, GAS_URL);
 	connectWiFi(); // connect WiFi at startup
+	readIDlist();
 #endif
 }
 
@@ -412,8 +413,15 @@ void loop() {
 		}
 	}
 	else{
-		printf("Locked\n");
-		showLED(0, LED_INTENSITY, 0); // green when locked
+		if (getLockStatus() == 0){
+			// actually unlocked
+			printf("Actually unlocked\n");
+			showLED(0, 0, LED_INTENSITY); // blue when unlocked
+		}
+		else{
+		  printf("Locked\n");
+		  showLED(0, LED_INTENSITY, 0); // green when locked
+		}
 	}
 /*
 	if (getLockStatus() == 0){
