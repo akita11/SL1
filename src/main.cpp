@@ -397,7 +397,7 @@ void loop() {
 			printf("Still locked\n");
 			showLED(0, LED_INTENSITY, 0); // green when locked
 			tmOn++;
-#define RETAIN_UNLOCK_TIME 30 // [x100ms]
+#define RETAIN_UNLOCK_TIME 600 // [x100ms], 60sec
 			if (tmOn > RETAIN_UNLOCK_TIME){
 				// if still locked after RETAIN_UNLOCK_TIME, give up unlock
 				analogWrite(PIN_SOL, PWM_OFF); // turn off
