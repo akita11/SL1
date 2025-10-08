@@ -1,9 +1,19 @@
 // for SL2
+
+#define USE_FELICA_READER // with "RFID Reader Unit (PN532)"
+
 #include <Arduino.h>
 #include <M5Unified.h>
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
+#ifdef USE_FELICA_READER
+#include <Wire.h>
+#include <PN532_I2C.h>
+#include <PN532.h>
+#include <PN532_debug.h>
+#else
 #include "MFRC522_I2C.h"
+#endif
 #include <Adafruit_NeoPixel.h>
 #include "SD.h"
 
@@ -27,7 +37,12 @@ char GAS_URL[128];
 char WIFI_SSID[32];
 char WIFI_PASSWORD[64];
 char WIFI_ID[64];
+#ifdef USE_FELICA_READER
+PN532_I2C pn532i2c(Wire);
+PN532 nfc(pn532i2c);
+#else
 MFRC522 mfrc522(0x28);
+#endif
 
 StaticJsonDocument<1024> json_doc;
 String IDlist = "";
@@ -122,7 +137,6 @@ void ShowError(uint16_t n)
 		showLED(0, 0, 0);	delay(100);
 	}
 }
-
 
 bool readIDlist(){
 
@@ -274,6 +288,21 @@ int checkIDstatus(String id){
 
 String getCardID(){
 	String id = "";
+#ifdef USE_FELICA_READER
+	uint8_t ret;
+  uint16_t systemCode = 0xFFFF;
+  uint8_t requestCode = 0x01;       // System Code request
+  uint8_t idm[8];
+  uint8_t pmm[8];
+  uint16_t systemCodeResponse;
+	printf("reading card...\n");
+  ret = nfc.felica_Polling(systemCode, requestCode, idm, pmm, &systemCodeResponse, 1000);
+  if (ret == 1){
+		for (byte i = 0; i < 8; i++) {
+			id += String(idm[i], HEX);
+		}
+	}
+#else
 	if (!mfrc522.PICC_IsNewCardPresent() || !mfrc522.PICC_ReadCardSerial()) {
 		//printf("no card\n");
 	}
@@ -284,6 +313,7 @@ String getCardID(){
 		}
 		//printf("\n");
 	}
+#endif
 	//printf("card ID: %s\n", id.c_str());
 	return(id);
 }
@@ -291,6 +321,7 @@ String getCardID(){
 void setup() {
 	M5.begin();
 	//M5.Ex_I2C.begin(); // need for ATOMS3's Grove port
+	Wire.end();
   Wire.begin(PIN_SDA, PIN_SCL); // Grove on board
 	pinMode(PIN_LED, OUTPUT);
 	pixels.begin();
@@ -299,7 +330,14 @@ void setup() {
 	pinMode(PIN_SW, INPUT_PULLUP);
 
 	showLED(LED_INTENSITY, 0, 0);
+#ifdef USE_FELICA_READER
+  nfc.begin();
+  uint32_t versiondata = nfc.getFirmwareVersion(); // 32010607
+  nfc.setPassiveActivationRetries(0xFF);
+  nfc.SAMConfig();
+#else
 	mfrc522.PCD_Init(); // Init MFRC522
+#endif
 	showLED(0, 0, 0);
 
 	// for SD card, SL2
@@ -338,6 +376,11 @@ void setup() {
 	connectWiFi(); // connect WiFi at startup
 	readIDlist();
 #endif
+	printf("Reading ID list at boot...\n");
+	showLED(LED_INTENSITY, 0, LED_INTENSITY);
+	readIDlist();
+	printf("ID list: %s\n", IDlist.c_str());
+	showLED(0, 0, 0);
 }
 
 void loop() {
@@ -357,10 +400,6 @@ void loop() {
 		showLED(0, 0, 0);
 #endif
 	}
-/*
-	if (getLockStatus() == 0) showLED(0, 0, LED_INTENSITY); // blue when unlocked
-	else showLED(0, LED_INTENSITY, 0); // green when locked
-*/
 
 /*
 （用語の定義）
@@ -383,6 +422,7 @@ void loop() {
 
 */
 //	printf("%d %d %d : ", tmOn, fUnlock, getLockStatus());
+/*
 	if (fUnlock == true){
 		// unlock operated
 		if (getLockStatus() == 0){
@@ -423,32 +463,17 @@ void loop() {
 		  showLED(0, LED_INTENSITY, 0); // green when locked
 		}
 	}
-/*
-	if (getLockStatus() == 0){
-		 showLED(0, 0, LED_INTENSITY); // blue when unlocked
-		 tmOn = 0;
-		 analogWrite(PIN_SOL, PWM_OFF); // turn off when actually unlocked
-	}
-	else{
-		if (fUnlock == true){
-			// unlocked, but still locked
-			tmOn++;
-		}
-		else{
-			// locked
-		}
-		showLED(0, LED_INTENSITY, 0); // green when locked
-	}
-*/
+	*/
 	String cardID = getCardID();
 	if (cardID.length() > 0) {
-		printf("Card ID: %s\n", cardID.c_str());
+		printf("Card ID: %s [%d]\n", cardID.c_str(), cardID.length());
 #ifdef UNLOCK_TEST
 //   赤: 未登録カード
 //   紫: 登録済みカード(disbaled)
 //   黄: 登録済みカード(enabled)→解錠動作後消灯
 #else
-		if (checkIDstatus(cardID) == 1) {
+		int cardStatus = checkIDstatus(cardID);
+		if (cardStatus == 1) {
 			printf("Card %s is enabled\n", cardID.c_str());
 			showLED(LED_INTENSITY+20, LED_INTENSITY, 0); // yellow
 			setUnlock(1);
@@ -462,7 +487,8 @@ void loop() {
 				}
 			}
 			showLED(0, 0, 0);
-		} else if (checkIDstatus(cardID) == 0) {
+			delay(1000);
+		} else if (cardStatus == 0) {
 			printf("Card %s is disabled\n", cardID.c_str());
 			showLED(LED_INTENSITY, 0, LED_INTENSITY+30); // purple
 			delay(1000);
