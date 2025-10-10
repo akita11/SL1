@@ -14,7 +14,8 @@
 #else
 #include "MFRC522_I2C.h"
 #endif
-#include <Adafruit_NeoPixel.h>
+//#include <Adafruit_NeoPixel.h>
+#include <FastLED.h>
 #include "SD.h"
 
 //#define UNLOCK_TEST
@@ -27,6 +28,7 @@
 #define PIN_SOL 1 // SL2
 #define PIN_SW  3 // SL2
 #define PIN_LED 43 // LED on board, SL2
+//#define PIN_LED 21 // LED on board, SL2
 //#define PIN_LED 21 // LED on StampS3
 
 #define PWM_STRONG_ON 255
@@ -48,11 +50,15 @@ StaticJsonDocument<1024> json_doc;
 String IDlist = "";
 File file;
 #define NUM_LEDS 1
-Adafruit_NeoPixel pixels = Adafruit_NeoPixel(NUM_LEDS, PIN_LED, NEO_RGB + NEO_KHZ800); // for PL9823-F5
+CRGB leds[NUM_LEDS];
+//Adafruit_NeoPixel pixels = Adafruit_NeoPixel(NUM_LEDS, PIN_LED, NEO_RGB + NEO_KHZ800); // for PL9823-F5
 
 void showLED(uint8_t r, uint8_t g, uint8_t b) {
-	pixels.setPixelColor(0, r, g, b);
-	pixels.show();
+//  pixels.setPixelColor(0, pixels.Color(r, g, b));
+//  pixels.show();
+	// PL9823=RGB / WS2812=GRB
+  leds[0] = CRGB(g, r, b);
+  FastLED.show();
 }
 
 uint16_t tmOn = 0;
@@ -62,17 +68,12 @@ void setUnlock(bool f=true)
 {
 	if (f == 1){
 		printf("Unlock\n");
-/*
-		digitalWrite(PIN_SOL, HIGH);
 		showLED(30, 0, 0);
-		delay(300);
-		digitalWrite(PIN_SOL, LOW);
-		showLED(0, 0, 0);
-*/
-		showLED(30, 0, 0);
+		delay(10);
 		analogWrite(PIN_SOL, PWM_STRONG_ON);
 		delay(300);
 		analogWrite(PIN_SOL, PWM_WEAK_ON);
+		delay(10);
 		showLED(0, 0, 0);
 		fUnlock = true;
 	}
@@ -295,8 +296,7 @@ String getCardID(){
   uint8_t idm[8];
   uint8_t pmm[8];
   uint16_t systemCodeResponse;
-	printf("reading card...\n");
-  ret = nfc.felica_Polling(systemCode, requestCode, idm, pmm, &systemCodeResponse, 1000);
+  ret = nfc.felica_Polling(systemCode, requestCode, idm, pmm, &systemCodeResponse, 30); // timeout=100 -> about 3sec
   if (ret == 1){
 		for (byte i = 0; i < 8; i++) {
 			id += String(idm[i], HEX);
@@ -314,7 +314,7 @@ String getCardID(){
 		//printf("\n");
 	}
 #endif
-	//printf("card ID: %s\n", id.c_str());
+	//printf("card ID: %s (%d)\n", id.c_str(), id.length());
 	return(id);
 }
 
@@ -323,10 +323,11 @@ void setup() {
 	//M5.Ex_I2C.begin(); // need for ATOMS3's Grove port
 	Wire.end();
   Wire.begin(PIN_SDA, PIN_SCL); // Grove on board
-	pinMode(PIN_LED, OUTPUT);
-	pixels.begin();
+//	pixels.begin();
 
-	//	pinMode(PIN_SOL, OUTPUT); digitalWrite(PIN_SOL, LOW);
+	FastLED.addLeds<NEOPIXEL, PIN_LED>(leds, NUM_LEDS);
+
+	analogWrite(PIN_SOL, PWM_OFF);
 	pinMode(PIN_SW, INPUT_PULLUP);
 
 	showLED(LED_INTENSITY, 0, 0);
@@ -421,16 +422,17 @@ void loop() {
 4. 解錠された状態: 扉を閉じて施錠になったら1.へ戻る
 
 */
-//	printf("%d %d %d : ", tmOn, fUnlock, getLockStatus());
-/*
+	//	printf("%d %d %d : ", tmOn, fUnlock, getLockStatus());
 	if (fUnlock == true){
 		// unlock operated
 		if (getLockStatus() == 0){
 			// actually unlocked
-			printf("Actually unlocked\n");
+			printf("Actually unlocked(1)\n");
 			showLED(0, 0, LED_INTENSITY); // blue when unlocked
+			delay(100);
 			tmOn = 0;
 		 	analogWrite(PIN_SOL, PWM_OFF); // turn off when actually unlocked
+			delay(100);
 			fUnlock = false;
 		}
 		else{
@@ -438,10 +440,12 @@ void loop() {
 			printf("Still locked\n");
 			showLED(0, LED_INTENSITY, 0); // green when locked
 			tmOn++;
-#define RETAIN_UNLOCK_TIME 600 // [x100ms], 60sec
+//#define RETAIN_UNLOCK_TIME 600 // [x100ms], 60sec
+#define RETAIN_UNLOCK_TIME 50 // [x100ms], 5sec for test
 			if (tmOn > RETAIN_UNLOCK_TIME){
 				// if still locked after RETAIN_UNLOCK_TIME, give up unlock
 				analogWrite(PIN_SOL, PWM_OFF); // turn off
+				delay(100);
 				for (uint8_t i = 0; i < 3; i++){
 					// flash green when giving up unlock
 					showLED(0, LED_INTENSITY, 0); delay(100);
@@ -455,18 +459,19 @@ void loop() {
 	else{
 		if (getLockStatus() == 0){
 			// actually unlocked
-			printf("Actually unlocked\n");
+			printf("Actually unlocked(2)\n");
 			showLED(0, 0, LED_INTENSITY); // blue when unlocked
+			delay(100);
 		}
 		else{
 		  printf("Locked\n");
 		  showLED(0, LED_INTENSITY, 0); // green when locked
+			delay(100);
 		}
 	}
-	*/
 	String cardID = getCardID();
+	printf("Card ID: %s [%d]\n", cardID.c_str(), cardID.length());
 	if (cardID.length() > 0) {
-		printf("Card ID: %s [%d]\n", cardID.c_str(), cardID.length());
 #ifdef UNLOCK_TEST
 //   赤: 未登録カード
 //   紫: 登録済みカード(disbaled)
@@ -486,8 +491,8 @@ void loop() {
 					showLED(0, 0, 0);	delay(100);
 				}
 			}
-			showLED(0, 0, 0);
 			delay(1000);
+			showLED(0, 0, 0);
 		} else if (cardStatus == 0) {
 			printf("Card %s is disabled\n", cardID.c_str());
 			showLED(LED_INTENSITY, 0, LED_INTENSITY+30); // purple
@@ -499,7 +504,7 @@ void loop() {
 			setUnlock(0);
 			delay(1000);
 		}
-#endif
+		#endif
 	}
 	delay(100);
 }

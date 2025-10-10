@@ -120,7 +120,6 @@ int16_t PN532_I2C::readResponse(uint8_t buf[], uint8_t len, uint16_t timeout)
     uint8_t length;
 
     length = getResponseLength(buf, len, timeout);
-
     // [RDY] 00 00 FF LEN LCS (TFI PD0 ... PDn) DCS 00
     do {
         if (_wire->requestFrom(PN532_I2C_ADDRESS, 6 + length + 2)) {
