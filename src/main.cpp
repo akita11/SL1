@@ -1,12 +1,14 @@
 // for SL2
 
-#define USE_FELICA_READER // with "RFID Reader Unit (PN532)"
+#define USE_PN532 // with "RFID Reader Unit (PN532)"
+#define USE_MIFARE // use MIFARE with "RFID Reader Unit (PN532) 
+#define WITHOUT_WIFI // without WiFi, read ID from SD(id.txt), and record log to SD(log.txt)
 
 #include <Arduino.h>
 #include <M5Unified.h>
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
-#ifdef USE_FELICA_READER
+#ifdef USE_PN532
 #include <Wire.h>
 #include <PN532_I2C.h>
 #include <PN532.h>
@@ -14,12 +16,10 @@
 #else
 #include "MFRC522_I2C.h"
 #endif
-//#include <Adafruit_NeoPixel.h>
 #include <FastLED.h>
 #include "SD.h"
 
 //#define UNLOCK_TEST
-#define WITHOUT_WIFI // without WiFi, read ID from SD(id.txt), and record log to SD(log.txt)
 
 #define LED_INTENSITY 70
 
@@ -39,7 +39,7 @@ char GAS_URL[128];
 char WIFI_SSID[32];
 char WIFI_PASSWORD[64];
 char WIFI_ID[64];
-#ifdef USE_FELICA_READER
+#ifdef USE_PN532
 PN532_I2C pn532i2c(Wire);
 PN532 nfc(pn532i2c);
 #else
@@ -51,7 +51,6 @@ String IDlist = "";
 File file;
 #define NUM_LEDS 1
 CRGB leds[NUM_LEDS];
-//Adafruit_NeoPixel pixels = Adafruit_NeoPixel(NUM_LEDS, PIN_LED, NEO_RGB + NEO_KHZ800); // for PL9823-F5
 
 void showLED(uint8_t r, uint8_t g, uint8_t b) {
 //  pixels.setPixelColor(0, pixels.Color(r, g, b));
@@ -289,7 +288,90 @@ int checkIDstatus(String id){
 
 String getCardID(){
 	String id = "";
-#ifdef USE_FELICA_READER
+#ifdef USE_PN532
+ #ifdef USE_MIFARE
+ 	uint8_t ret;
+  uint8_t idm[8];
+	printf("Waiting for a Mifare card...\n");
+	uint8_t uidLength; // Length of the UID (4 or 7 bytes depending on ISO14443A card type)
+  // Wait for an ISO14443A type cards (Mifare, etc.).  When one is found
+  // 'uid' will be populated with the UID, and uidLength will indicate
+  // if the uid is 4 bytes (Mifare Classic) or 7 bytes (Mifare Ultralight)
+  ret = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, idm, &uidLength, 20); // timeout:1000=28s
+  if (ret) {
+	  // Display some basic information about the card
+   	printf("Found an ISO14443A card, uid=%x (len=%d)\n", idm, uidLength);
+	  if (ret == 1){
+			for (byte i = 0; i < 8; i++) {
+				id += String(idm[i], HEX);
+			}
+		}
+		printf("card ID: %s (%d)\n", id.c_str(), id.length());
+	  if (uidLength == 4){
+	    // We probably have a Mifare Classic card ... 
+    	printf("Seems to be a Mifare Classic card (4 byte UID)\n");
+	    // Now we need to try to authenticate it for read/write access
+     	// Try with the factory default KeyA: 0xFF 0xFF 0xFF 0xFF 0xFF 0xFF
+     	printf("Trying to authenticate block 4 with default KEYA value\n");
+     	uint8_t keya[6] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+	  	// Start with block 4 (the first block of sector 1) since sector 0
+	  	// contains the manufacturer data and it's probably better just
+	  	// to leave it alone unless you know what you're doing
+     	ret = nfc.mifareclassic_AuthenticateBlock(idm, uidLength, 4, 0, keya);
+     	if (ret){
+ 	     	printf("Sector 1 (Blocks 4..7) has been authenticated\n");
+       	uint8_t data[16];
+       	// If you want to write something to block 4 to test with, uncomment
+				// the following line and this text should be read back in a minute
+       	// data = { 'a', 'd', 'a', 'f', 'r', 'u', 'i', 't', '.', 'c', 'o', 'm', 0, 0, 0, 0};
+      	 	// success = nfc.mifareclassic_WriteDataBlock (4, data);
+       	// Try to read the contents of block 4
+       	ret = nfc.mifareclassic_ReadDataBlock(4, data);
+       	if (ret){
+         	// Data seems to have been read ... spit it out
+         	printf("Reading Block 4: %x\n", data);
+         	// Wait a bit before reading the card again
+         	delay(1000);
+       	}
+       	else{
+         	printf("Ooops ... unable to read the requested block.  Try another key?\n");
+       	}
+     	}
+     	else{
+       	printf("Ooops ... authentication failed: Try another key？\n");
+     	}
+     }    
+     if (uidLength == 7){
+      // We probably have a Mifare Ultralight card ...
+      printf("Seems to be a Mifare Ultralight tag (7 byte UID)\n");
+      // Try to read the first general-purpose user page (#4)
+      printf("Reading page 4: ");
+      uint8_t data[32];
+      ret = nfc.mifareultralight_ReadPage (4, data);
+      if (ret){
+        // Data seems to have been read ... spit it out
+        printf("%x\n", data);
+        // Wait a bit before reading the card again
+        delay(1000);
+      }
+      else{
+        printf("Ooops ... unable to read the requested page!?\n");
+      }
+    }
+	}
+ #else
+	uint8_t success;
+	uint8_t uid[] = { 0, 0, 0, 0, 0, 0, 0 };  // Buffer to store the returned UID
+	uint8_t uidLength;                        // Length of the UID (4 or 7 bytes depending on ISO14443A card type)
+	
+	// Check for a new card
+	success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, 50);
+	if (success) {
+		// UID found
+		for (uint8_t i = 0; i < uidLength; i++) {
+			id += String(uid[i], HEX);
+		}
+	}
 	uint8_t ret;
   uint16_t systemCode = 0xFFFF;
   uint8_t requestCode = 0x01;       // System Code request
@@ -302,6 +384,7 @@ String getCardID(){
 			id += String(idm[i], HEX);
 		}
 	}
+ #endif
 #else
 	if (!mfrc522.PICC_IsNewCardPresent() || !mfrc522.PICC_ReadCardSerial()) {
 		//printf("no card\n");
@@ -314,7 +397,7 @@ String getCardID(){
 		//printf("\n");
 	}
 #endif
-	//printf("card ID: %s (%d)\n", id.c_str(), id.length());
+	printf("card ID: %s (%d)\n", id.c_str(), id.length());
 	return(id);
 }
 
@@ -331,7 +414,7 @@ void setup() {
 	pinMode(PIN_SW, INPUT_PULLUP);
 
 	showLED(LED_INTENSITY, 0, 0);
-#ifdef USE_FELICA_READER
+#ifdef USE_PN532
   nfc.begin();
   uint32_t versiondata = nfc.getFirmwareVersion(); // 32010607
   nfc.setPassiveActivationRetries(0xFF);
