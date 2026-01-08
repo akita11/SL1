@@ -2,7 +2,7 @@
 
 #define USE_PN532 // with "RFID Reader Unit (PN532)"
 #define USE_MIFARE // use MIFARE with "RFID Reader Unit (PN532) 
-#define WITHOUT_WIFI // without WiFi, read ID from SD(id.txt), and record log to SD(log.txt)
+//#define WITHOUT_WIFI // without WiFi, read ID from SD(id.txt), and record log to SD(log.txt)
 
 #include <Arduino.h>
 #include <M5Unified.h>
@@ -472,7 +472,7 @@ void setup() {
 #define KEEP_FORCE_UNLOCK_AFTER_UNLOCK 10  // [s]
 #define KEEP_UNLOCK_AFTER_UNLOCK       60  // [s]
 
-String cardID = "";
+String cardID = "", lastCardID = "";
 
 void loop() {
 	M5.update();
@@ -535,9 +535,10 @@ void loop() {
 				fUnlock = false;
 				// record log when actually unlocked	
 				showLED(LED_INTENSITY, LED_INTENSITY, LED_INTENSITY); // white
-				bool res = recordLog(cardID);
+				printf("Record log for card %s\n", lastCardID.c_str());
+				bool res = recordLog(lastCardID);
 				if (res == false){
-					printf("Failed to record log for card %s\n", cardID.c_str());
+					printf("Failed to record log for card %s\n", lastCardID.c_str());
 					for (uint8_t i = 0; i < 10; i++){
 						showLED(LED_INTENSITY, 0, 0); delay(100);
 						showLED(0, 0, 0);	delay(100);
@@ -581,6 +582,7 @@ void loop() {
 	cardID = getCardID();
 	if (cardID.length() > 0) {
 		printf("Card ID: %s [%d]\n", cardID.c_str(), cardID.length());
+		lastCardID = cardID;
 #ifdef UNLOCK_TEST
 //   赤: 未登録カード
 //   紫: 登録済みカード(disbaled)
