@@ -28,7 +28,6 @@
 #define PIN_SOL 1 // SL2
 #define PIN_SW  3 // SL2
 #define PIN_LED 43 // LED on board, SL2
-//#define PIN_LED 21 // LED on board, SL2
 //#define PIN_LED 21 // LED on StampS3
 
 #define PWM_STRONG_ON 255
@@ -60,20 +59,20 @@ void showLED(uint8_t r, uint8_t g, uint8_t b) {
   FastLED.show();
 }
 
-uint16_t tmOn = 0;
+uint16_t tmKeepUnlock = 0;
 bool fUnlock = false;
 
 void setUnlock(bool f=true)
 {
 	if (f == 1){
 		printf("Unlock\n");
-		showLED(30, 0, 0);
-		delay(10);
+//		showLED(30, 0, 0); // red
+//		delay(10);
 		analogWrite(PIN_SOL, PWM_STRONG_ON);
 		delay(300);
 		analogWrite(PIN_SOL, PWM_WEAK_ON);
-		delay(10);
-		showLED(0, 0, 0);
+//		delay(10);
+//		showLED(0, 0, 0); 
 		fUnlock = true;
 	}
 	else {
@@ -83,11 +82,14 @@ void setUnlock(bool f=true)
 	}
 }
 
+#define LOCK_STATUS_LOCKED true
+#define LOCK_STATUS_UNLOCKED false
+
 bool getLockStatus(){
 	if (digitalRead(PIN_SW) == LOW) {
-		return true; // locked
+		return LOCK_STATUS_LOCKED; // locked
 	} else {
-		return false; // unlocked
+		return LOCK_STATUS_UNLOCKED; // unlocked
 	}	
 }
 
@@ -292,12 +294,12 @@ String getCardID(){
  #ifdef USE_MIFARE
  	uint8_t ret;
   uint8_t idm[8];
-	printf("Waiting for a Mifare card...\n");
+	//printf("Waiting for a Mifare card...\n");
 	uint8_t uidLength; // Length of the UID (4 or 7 bytes depending on ISO14443A card type)
   // Wait for an ISO14443A type cards (Mifare, etc.).  When one is found
   // 'uid' will be populated with the UID, and uidLength will indicate
   // if the uid is 4 bytes (Mifare Classic) or 7 bytes (Mifare Ultralight)
-  ret = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, idm, &uidLength, 20); // timeout:1000=28s
+  ret = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, idm, &uidLength, 22); // timeout:1000=28s / 22=1s
   if (ret) {
 	  // Display some basic information about the card
    	printf("Found an ISO14443A card, uid=%x (len=%d)\n", idm, uidLength);
@@ -309,17 +311,17 @@ String getCardID(){
 		printf("card ID: %s (%d)\n", id.c_str(), id.length());
 	  if (uidLength == 4){
 	    // We probably have a Mifare Classic card ... 
-    	printf("Seems to be a Mifare Classic card (4 byte UID)\n");
+//    	printf("Seems to be a Mifare Classic card (4 byte UID)\n");
 	    // Now we need to try to authenticate it for read/write access
      	// Try with the factory default KeyA: 0xFF 0xFF 0xFF 0xFF 0xFF 0xFF
-     	printf("Trying to authenticate block 4 with default KEYA value\n");
+//     	printf("Trying to authenticate block 4 with default KEYA value\n");
      	uint8_t keya[6] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
 	  	// Start with block 4 (the first block of sector 1) since sector 0
 	  	// contains the manufacturer data and it's probably better just
 	  	// to leave it alone unless you know what you're doing
      	ret = nfc.mifareclassic_AuthenticateBlock(idm, uidLength, 4, 0, keya);
      	if (ret){
- 	     	printf("Sector 1 (Blocks 4..7) has been authenticated\n");
+// 	     	printf("Sector 1 (Blocks 4..7) has been authenticated\n");
        	uint8_t data[16];
        	// If you want to write something to block 4 to test with, uncomment
 				// the following line and this text should be read back in a minute
@@ -329,33 +331,33 @@ String getCardID(){
        	ret = nfc.mifareclassic_ReadDataBlock(4, data);
        	if (ret){
          	// Data seems to have been read ... spit it out
-         	printf("Reading Block 4: %x\n", data);
+//         	printf("Reading Block 4: %x\n", data);
          	// Wait a bit before reading the card again
-         	delay(1000);
+//         	delay(1000);
        	}
        	else{
-         	printf("Ooops ... unable to read the requested block.  Try another key?\n");
+//         	printf("Ooops ... unable to read the requested block.  Try another key?\n");
        	}
      	}
      	else{
-       	printf("Ooops ... authentication failed: Try another key？\n");
+//       	printf("Ooops ... authentication failed: Try another key？\n");
      	}
      }    
      if (uidLength == 7){
       // We probably have a Mifare Ultralight card ...
-      printf("Seems to be a Mifare Ultralight tag (7 byte UID)\n");
+//      printf("Seems to be a Mifare Ultralight tag (7 byte UID)\n");
       // Try to read the first general-purpose user page (#4)
-      printf("Reading page 4: ");
+//      printf("Reading page 4: ");
       uint8_t data[32];
       ret = nfc.mifareultralight_ReadPage (4, data);
       if (ret){
         // Data seems to have been read ... spit it out
-        printf("%x\n", data);
+//        printf("%x\n", data);
         // Wait a bit before reading the card again
-        delay(1000);
+//        delay(1000);
       }
       else{
-        printf("Ooops ... unable to read the requested page!?\n");
+//        printf("Ooops ... unable to read the requested page!?\n");
       }
     }
 	}
@@ -397,7 +399,7 @@ String getCardID(){
 		//printf("\n");
 	}
 #endif
-	printf("card ID: %s (%d)\n", id.c_str(), id.length());
+//	printf("card ID: %s (%d)\n", id.c_str(), id.length());
 	return(id);
 }
 
@@ -467,6 +469,11 @@ void setup() {
 	showLED(0, 0, 0);
 }
 
+#define KEEP_FORCE_UNLOCK_AFTER_UNLOCK 10  // [s]
+#define KEEP_UNLOCK_AFTER_UNLOCK       60  // [s]
+
+String cardID = "";
+
 void loop() {
 	M5.update();
 	if (M5.BtnA.wasClicked()){
@@ -505,56 +512,75 @@ void loop() {
 4. 解錠された状態: 扉を閉じて施錠になったら1.へ戻る
 
 */
-	//	printf("%d %d %d : ", tmOn, fUnlock, getLockStatus());
+	printf("%d %d %c\n", tmKeepUnlock, fUnlock, (getLockStatus() == LOCK_STATUS_LOCKED)?'L':'U');
 	if (fUnlock == true){
 		// unlock operated
-		if (getLockStatus() == 0){
-			// actually unlocked
-			printf("Actually unlocked(1)\n");
-			showLED(0, 0, LED_INTENSITY); // blue when unlocked
-			delay(100);
-			tmOn = 0;
-		 	analogWrite(PIN_SOL, PWM_OFF); // turn off when actually unlocked
-			delay(100);
-			fUnlock = false;
+		if (tmKeepUnlock < KEEP_FORCE_UNLOCK_AFTER_UNLOCK){
+			printf("Keeping unlock... %d\n", tmKeepUnlock);
+			tmKeepUnlock++;
+			if (getLockStatus() == LOCK_STATUS_UNLOCKED){ // actually unlocked
+				printf("Actually unlocked(0)\n");
+				showLED(0, 0, LED_INTENSITY); // blue when unlocked
+			}
 		}
 		else{
-			// still actually locked
-			printf("Still locked\n");
-			showLED(0, LED_INTENSITY, 0); // green when locked
-			tmOn++;
-//#define RETAIN_UNLOCK_TIME 600 // [x100ms], 60sec
-#define RETAIN_UNLOCK_TIME 50 // [x100ms], 5sec for test
-			if (tmOn > RETAIN_UNLOCK_TIME){
-				// if still locked after RETAIN_UNLOCK_TIME, give up unlock
-				analogWrite(PIN_SOL, PWM_OFF); // turn off
-				delay(100);
-				for (uint8_t i = 0; i < 3; i++){
-					// flash green when giving up unlock
-					showLED(0, LED_INTENSITY, 0); delay(100);
-					showLED(0, 0, 0);	delay(100);
-				}
+			printf("Checking lock status...");
+			if (getLockStatus() == LOCK_STATUS_UNLOCKED){ // actually unlocked
+				printf("Actually unlocked(1)\n");
+				showLED(0, 0, LED_INTENSITY); // blue when unlocked
+				//delay(100);
+				tmKeepUnlock = 0;
+		 		analogWrite(PIN_SOL, PWM_OFF); // turn off when actually unlocked
+				//delay(100);
 				fUnlock = false;
-				tmOn = 0;
+				// record log when actually unlocked	
+				showLED(LED_INTENSITY, LED_INTENSITY, LED_INTENSITY); // white
+				bool res = recordLog(cardID);
+				if (res == false){
+					printf("Failed to record log for card %s\n", cardID.c_str());
+					for (uint8_t i = 0; i < 10; i++){
+						showLED(LED_INTENSITY, 0, 0); delay(100);
+						showLED(0, 0, 0);	delay(100);
+					}
+				}
+				delay(1000);
+				showLED(0, 0, 0);
+			}
+			else{ // still actually locked
+				printf("Still locked\n");
+				showLED(0, LED_INTENSITY, 0); // green when locked
+				tmKeepUnlock++;
+//#define RETAIN_UNLOCK_TIME 600 // [x100ms], 60sec
+				if (tmKeepUnlock >= KEEP_UNLOCK_AFTER_UNLOCK){
+					// if still locked after RETAIN_UNLOCK_TIME, give up unlock
+					analogWrite(PIN_SOL, PWM_OFF); // turn off
+					delay(100);
+					for (uint8_t i = 0; i < 3; i++){
+						// flash green when giving up unlock
+						showLED(0, LED_INTENSITY, 0); delay(100);
+						showLED(0, 0, 0);	delay(100);
+					}
+					fUnlock = false;
+					tmKeepUnlock = 0;
+				}
 			}
 		}
 	}
 	else{
-		if (getLockStatus() == 0){
-			// actually unlocked
+		if (getLockStatus() == LOCK_STATUS_UNLOCKED){ // actually unlocked
 			printf("Actually unlocked(2)\n");
 			showLED(0, 0, LED_INTENSITY); // blue when unlocked
 			delay(100);
 		}
-		else{
+		else{ // locked
 		  printf("Locked\n");
 		  showLED(0, LED_INTENSITY, 0); // green when locked
 			delay(100);
 		}
 	}
-	String cardID = getCardID();
-	printf("Card ID: %s [%d]\n", cardID.c_str(), cardID.length());
+	cardID = getCardID();
 	if (cardID.length() > 0) {
+		printf("Card ID: %s [%d]\n", cardID.c_str(), cardID.length());
 #ifdef UNLOCK_TEST
 //   赤: 未登録カード
 //   紫: 登録済みカード(disbaled)
@@ -565,6 +591,8 @@ void loop() {
 			printf("Card %s is enabled\n", cardID.c_str());
 			showLED(LED_INTENSITY+20, LED_INTENSITY, 0); // yellow
 			setUnlock(1);
+			tmKeepUnlock = 0;
+/*
 			showLED(LED_INTENSITY, LED_INTENSITY, LED_INTENSITY); // white
 			bool res = recordLog(cardID);
 			if (res == false){
@@ -576,6 +604,7 @@ void loop() {
 			}
 			delay(1000);
 			showLED(0, 0, 0);
+*/
 		} else if (cardStatus == 0) {
 			printf("Card %s is disabled\n", cardID.c_str());
 			showLED(LED_INTENSITY, 0, LED_INTENSITY+30); // purple
@@ -589,5 +618,5 @@ void loop() {
 		}
 		#endif
 	}
-	delay(100);
+	delay(10);
 }
